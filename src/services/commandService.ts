@@ -24,12 +24,6 @@ export enum BuildType {
     Release
 }
 
-export enum ErrorFormat {
-    OldStyle,
-    NewStyle,
-    JSON
-}
-
 class ChannelWrapper {
     private channel: vscode.OutputChannel;
 
@@ -55,6 +49,45 @@ export enum CheckTarget {
     Application
 }
 
+interface CompilerMessageSpanText {
+    highlight_end: number,
+    highlight_start: number,
+    text: string
+}
+
+interface CompilerMessageSpan {
+    byte_end: number,
+    byte_start: number,
+    column_end: number,
+    column_start: number,
+    expansion?: any,
+    file_name: string,
+    is_primary: boolean,
+    label: string,
+    line_end: number,
+    line_start: number,
+    suggested_replacement?: any,
+    text: CompilerMessageSpanText[]
+}
+
+interface CompilerMessage {
+    message: {
+        children: any[],
+        code?: any,
+        level: string,
+        message: string,
+        rendered?: any,
+        spans: CompilerMessageSpan[]
+    }
+    package_id: string,
+    reason: string,
+    target: {
+        kind: string[],
+        name: string,
+        src_path: string
+    }
+}
+
 type ExitCode = number;
 
 class CargoTask {
@@ -70,7 +103,6 @@ class CargoTask {
     ): Thenable<ExitCode> {
         return new Promise<ExitCode>((resolve, reject) => {
             const cargoPath = PathService.getCargoPath();
-            const errorFormat = CommandService.errorFormat;
 
             if (onStart) {
                 onStart();
@@ -81,12 +113,6 @@ class CargoTask {
             let customEnv = vscode.workspace.getConfiguration('rust')['cargoEnv'];
             if (customEnv) {
                 newEnv = Object.assign(newEnv, customEnv);
-            }
-
-            if (errorFormat === ErrorFormat.JSON) {
-                newEnv['RUSTFLAGS'] = '-Zunstable-options --error-format=json';
-            } else if (errorFormat === ErrorFormat.NewStyle) {
-                newEnv['RUST_NEW_ERROR_FORMAT'] = 'true';
             }
 
             this.process = cp.spawn(cargoPath, args, { cwd, env: newEnv });
@@ -142,7 +168,6 @@ export class CommandService {
     private static currentTask: CargoTask;
     private static statusBarItem: vscode.StatusBarItem;
     private static spinnerUpdate: any;
-    public static errorFormat: ErrorFormat;
 
     public static checkCommand(target: CheckTarget): vscode.Disposable {
         let commandId: string;
@@ -212,17 +237,6 @@ export class CommandService {
         });
     }
 
-    public static updateErrorFormat(): void {
-        const config = vscode.workspace.getConfiguration('rust');
-        if (config['useJsonErrors'] === true) {
-            this.errorFormat = ErrorFormat.JSON;
-        } else if (config['useNewErrorFormat'] === true) {
-            this.errorFormat = ErrorFormat.NewStyle;
-        } else {
-            this.errorFormat = ErrorFormat.OldStyle;
-        }
-    }
-
     private static determineExampleName(): string {
         let showDocumentIsNotExampleWarning = () => {
             vscode.window.showWarningMessage('Current document is not an example');
@@ -243,6 +257,7 @@ export class CommandService {
 
     private static buildProject(buildType: BuildType): void {
         let args = ['build'];
+        args.push('--message-format', 'json');
         if (buildType === BuildType.Release) {
             args.push('--release');
         }
@@ -275,19 +290,13 @@ export class CommandService {
 
     private static parseDiagnostics(cwd: string, output: string): void {
         let errors: RustError[] = [];
-        // The new Rust error format is a little more complex and is spread out over
-        // multiple lines. For this case, we'll just use a global regex to get our matches
-        if (this.errorFormat === ErrorFormat.NewStyle) {
-            this.parseNewHumanReadable(errors, output);
-        } else {
-            // Otherwise, parse out the errors line by line.
-            for (let line of output.split('\n')) {
-                if (this.errorFormat === ErrorFormat.JSON && line.startsWith('{')) {
-                    this.parseJsonLine(errors, line);
-                } else {
-                    this.parseOldHumanReadable(errors, line);
-                }
+
+        for (let line of output.split('\n')) {
+            if (!line.startsWith('{')) {
+                continue;
             }
+
+            this.parseJsonLine(errors, line);
         }
 
         let mapSeverityToVsCode = (severity) => {
@@ -411,28 +420,43 @@ export class CommandService {
         return this.parseJson(errors, errorJson);
     }
 
-    private static parseJson(errors: RustError[], errorJson: any): boolean {
-        let spans = errorJson.spans;
+    private static parseJson(errors: RustError[], errorJson: CompilerMessage): boolean {
+        const spans = errorJson.message.spans;
+
         if (spans.length === 0) {
             return false;
         }
 
-        for (let span of errorJson.spans) {
+        for (let span of spans) {
             // Only add the primary span, as VSCode orders the problem window by the 
             // error's range, which causes a lot of confusion if there are duplicate messages.
-            if (span.is_primary) {
-                let error: RustError = {
-                    filename: span.file_name,
-                    startLine: span.line_start,
-                    startCharacter: span.column_start,
-                    endLine: span.line_end,
-                    endCharacter: span.column_end,
-                    severity: errorJson.level,
-                    message: errorJson.message
-                };
+            // if (!span.is_primary) {
+                // continue;
+            // }
 
-                errors.push(error);
-            }
+            const error: RustError = {
+                filename: span.file_name,
+                startLine: span.line_start,
+                startCharacter: span.column_start,
+                endLine: span.line_end,
+                endCharacter: span.column_end,
+                severity: errorJson.message.level,
+                message: span.label
+            };
+
+            errors.push(error);
+
+            const error2: RustError = {
+                filename: span.file_name,
+                startLine: span.line_start,
+                startCharacter: 1,
+                endLine: span.line_end,
+                endCharacter: 90,
+                severity: errorJson.message.level,
+                message: errorJson.message.message
+            };
+
+            errors.push(error2);
         }
 
         return true;
@@ -556,12 +580,14 @@ export class CommandService {
                 let onStderrData = (data: string) => {
                     errOutput += data;
 
+                    // TODO: Check it
+
                     // If the user has selected JSON errors, we defer the output to process exit
                     // to allow us to parse the errors into something human readable.
                     // Otherwise we just emit the output as-is.
-                    if (this.errorFormat !== ErrorFormat.JSON) {
-                        this.channel.append(data);
-                    }
+                    // if (this.errorFormat !== ErrorFormat.JSON) {
+                    //     this.channel.append(data);
+                    // }
                 };
 
                 let onGracefullyEnded = (exitCode: ExitCode) => {
@@ -573,30 +599,28 @@ export class CommandService {
 
                     // If the user has selected JSON errors, we need to parse and print them into something human readable
                     // It might not match Rust 1-to-1, but its better than JSON
-                    this.parseDiagnostics(cwd, errOutput);
-                    if (this.errorFormat === ErrorFormat.JSON) {
-                        for (const line of errOutput.split('\n')) {
-                            // Catch any JSON lines
-                            if (line.startsWith('{')) {
-                                let errors: RustError[] = [];
-                                if (CommandService.parseJsonLine(errors, line)) {
-                                    /* tslint:disable:max-line-length */
-                                    // Print any errors as best we can match to Rust's format.
-                                    // TODO: Add support for child errors/text highlights.
-                                    // TODO: The following line will currently be printed fine, but the two lines after will not.
-                                    // src\main.rs:5:5: 5:8 error: expected one of `!`, `.`, `::`, `;`, `?`, `{`, `}`, or an operator, found `let`
-                                    // src\main.rs:5     let mut a = 4;
-                                    //                   ^~~
-                                    /* tslint:enable:max-line-length */
-                                    for (const error of errors) {
-                                        this.channel.append(`${error.filename}:${error.startLine}:${error.startCharacter}:` +
-                                            ` ${error.endLine}:${error.endCharacter} ${error.severity}: ${error.message}\n`);
-                                    }
+                    this.parseDiagnostics(cwd, output);
+                    for (const line of errOutput.split('\n')) {
+                        // Catch any JSON lines
+                        if (line.startsWith('{')) {
+                            let errors: RustError[] = [];
+                            if (CommandService.parseJsonLine(errors, line)) {
+                                /* tslint:disable:max-line-length */
+                                // Print any errors as best we can match to Rust's format.
+                                // TODO: Add support for child errors/text highlights.
+                                // TODO: The following line will currently be printed fine, but the two lines after will not.
+                                // src\main.rs:5:5: 5:8 error: expected one of `!`, `.`, `::`, `;`, `?`, `{`, `}`, or an operator, found `let`
+                                // src\main.rs:5     let mut a = 4;
+                                //                   ^~~
+                                /* tslint:enable:max-line-length */
+                                for (const error of errors) {
+                                    this.channel.append(`${error.filename}:${error.startLine}:${error.startCharacter}:` +
+                                        ` ${error.endLine}:${error.endCharacter} ${error.severity}: ${error.message}\n`);
                                 }
-                            } else {
-                                // Catch any non-JSON lines like "Compiling <project> (<path>)"
-                                this.channel.append(`${line}\n`);
                             }
+                        } else {
+                            // Catch any non-JSON lines like "Compiling <project> (<path>)"
+                            this.channel.append(`${line}\n`);
                         }
                     }
 
