@@ -6,7 +6,7 @@ import { window, workspace } from 'vscode';
 
 import findUp = require('find-up');
 
-export default class CurrentWorkingDirectoryManager {
+export class CurrentWorkingDirectoryManager {
     private rememberedCwd: string | null;
 
     public constructor() {

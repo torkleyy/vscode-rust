@@ -6,9 +6,9 @@ import {
     window
 } from 'vscode';
 
-import getDocumentFilter from '../configuration/mod';
+import { getDocumentFilter } from '../configuration/mod';
 
-export default class MissingToolsStatusBarItem {
+export class MissingToolsStatusBarItem {
     private statusBarItem: StatusBarItem;
 
     private canBeShown: boolean;

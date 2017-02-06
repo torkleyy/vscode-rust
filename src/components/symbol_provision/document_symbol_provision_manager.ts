@@ -8,11 +8,11 @@ import {
 
 import { ConfigurationManager } from '../configuration/configuration_manager';
 
-import getDocumentFilter from '../configuration/mod';
+import { getDocumentFilter } from '../configuration/mod';
 
-import SymbolSearchManager from './symbol_search_manager';
+import { SymbolSearchManager } from './symbol_search_manager';
 
-export default class DocumentSymbolProvisionManager implements DocumentSymbolProvider {
+export class DocumentSymbolProvisionManager implements DocumentSymbolProvider {
     private symbolSearchManager: SymbolSearchManager;
 
     public constructor(context: ExtensionContext, configurationManager: ConfigurationManager) {

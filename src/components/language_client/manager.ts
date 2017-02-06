@@ -2,7 +2,7 @@ import { ExtensionContext } from 'vscode';
 
 import { LanguageClientOptions, LanguageClient, ServerOptions, State } from 'vscode-languageclient';
 
-import ChildLogger from '../logging/child_logger';
+import { ChildLogger } from '../logging/child_logger';
 
 import { StatusBarItem } from './status_bar_item';
 

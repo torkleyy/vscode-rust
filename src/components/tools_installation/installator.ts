@@ -6,11 +6,11 @@ import { ExtensionContext, commands, window } from 'vscode';
 
 import { ConfigurationManager } from '../configuration/configuration_manager';
 
-import ChildLogger from '../logging/child_logger';
+import { ChildLogger } from '../logging/child_logger';
 
-import MissingToolsStatusBarItem from './missing_tools_status_bar_item';
+import { MissingToolsStatusBarItem } from './missing_tools_status_bar_item';
 
-export default class Installator {
+export class Installator {
     private configurationManager: ConfigurationManager;
 
     private logger: ChildLogger;

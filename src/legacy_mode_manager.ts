@@ -2,24 +2,24 @@ import { ExtensionContext } from 'vscode';
 
 import { ConfigurationManager } from './components/configuration/configuration_manager';
 
-import CurrentWorkingDirectoryManager
+import { CurrentWorkingDirectoryManager }
     from './components/configuration/current_working_directory_manager';
 
-import CompletionManager from './components/completion/completion_manager';
+import { CompletionManager } from './components/completion/completion_manager';
 
-import FormattingManager from './components/formatting/formatting_manager';
+import { FormattingManager } from './components/formatting/formatting_manager';
 
-import ChildLogger from './components/logging/child_logger';
+import { ChildLogger } from './components/logging/child_logger';
 
-import DocumentSymbolProvisionManager
+import { DocumentSymbolProvisionManager }
     from './components/symbol_provision/document_symbol_provision_manager';
 
-import WorkspaceSymbolProvisionManager
+import { WorkspaceSymbolProvisionManager }
     from './components/symbol_provision/workspace_symbol_provision_manager';
 
-import MissingToolsInstallator from './components/tools_installation/installator';
+import { Installator as MissingToolsInstallator } from './components/tools_installation/installator';
 
-export default class LegacyModeManager {
+export class LegacyModeManager {
     private context: ExtensionContext;
 
     private completionManager: CompletionManager;

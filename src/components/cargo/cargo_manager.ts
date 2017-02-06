@@ -12,11 +12,11 @@ import elegantSpinner = require('elegant-spinner');
 
 import { ConfigurationManager } from '../configuration/configuration_manager';
 
-import CurrentWorkingDirectoryManager from '../configuration/current_working_directory_manager';
+import { CurrentWorkingDirectoryManager } from '../configuration/current_working_directory_manager';
 
-import ChildLogger from '../logging/child_logger';
+import { ChildLogger } from '../logging/child_logger';
 
-import CustomConfigurationChooser from './custom_configuration_chooser';
+import { CustomConfigurationChooser } from './custom_configuration_chooser';
 
 import { DiagnosticParser } from './diagnostic_parser';
 
@@ -569,7 +569,7 @@ class CargoTaskManager {
     }
 }
 
-export default class CargoManager {
+export class CargoManager {
     private cargoManager: CargoTaskManager;
 
     private customConfigurationChooser: CustomConfigurationChooser;

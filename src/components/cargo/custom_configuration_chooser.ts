@@ -24,7 +24,7 @@ class CustomConfigurationQuickPickItem implements QuickPickItem {
     }
 }
 
-export default class CustomConfigurationChooser {
+export class CustomConfigurationChooser {
     private configurationManager: ConfigurationManager;
 
     public constructor(configurationManager: ConfigurationManager) {

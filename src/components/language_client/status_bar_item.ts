@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 
 import { ExtensionContext, languages, window } from 'vscode';
 
-import getDocumentFilter from '../configuration/mod';
+import { getDocumentFilter } from '../configuration/mod';
 
 export class StatusBarItem {
     private statusBarItem: vscode.StatusBarItem;

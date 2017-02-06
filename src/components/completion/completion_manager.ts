@@ -33,13 +33,13 @@ import { fileSync } from 'tmp';
 
 import { ConfigurationManager } from '../configuration/configuration_manager';
 
-import getDocumentFilter from '../configuration/mod';
+import { getDocumentFilter } from '../configuration/mod';
 
-import ChildLogger from '../logging/child_logger';
+import { ChildLogger } from '../logging/child_logger';
 
-import RacerStatusBarItem from './racer_status_bar_item';
+import { RacerStatusBarItem } from './racer_status_bar_item';
 
-export default class CompletionManager {
+export class CompletionManager {
     private configurationManager: ConfigurationManager;
 
     private logger: ChildLogger;

@@ -8,11 +8,11 @@ import {
 
 import { ConfigurationManager } from '../configuration/configuration_manager';
 
-import CurrentWorkingDirectoryManager from '../configuration/current_working_directory_manager';
+import { CurrentWorkingDirectoryManager } from '../configuration/current_working_directory_manager';
 
-import SymbolSearchManager from './symbol_search_manager';
+import { SymbolSearchManager } from './symbol_search_manager';
 
-export default class WorkspaceSymbolProvisionManager implements WorkspaceSymbolProvider {
+export class WorkspaceSymbolProvisionManager implements WorkspaceSymbolProvider {
     private configurationManager: ConfigurationManager;
 
     private currentWorkingDirectoryManager: CurrentWorkingDirectoryManager;

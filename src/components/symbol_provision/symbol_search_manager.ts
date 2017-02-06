@@ -4,9 +4,9 @@ import { SymbolInformation, window } from 'vscode';
 
 import { ConfigurationManager } from '../configuration/configuration_manager';
 
-import SymbolInformationParser from './symbol_information_parser';
+import { SymbolInformationParser } from './symbol_information_parser';
 
-export default class SymbolSearchManager {
+export class SymbolSearchManager {
     private configurationManager: ConfigurationManager;
 
     private symbolInformationParser: SymbolInformationParser;
