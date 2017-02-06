@@ -77,6 +77,7 @@ class CargoTask {
     }
 
     public execute(
+        command: string,
         args: string[],
         cwd: string,
         onStart?: () => void,
@@ -98,6 +99,9 @@ class CargoTask {
             if (customEnv) {
                 newEnv = Object.assign(newEnv, customEnv);
             }
+
+            // Prepend a command before arguments
+            args = [command].concat(args);
 
             this.process = cp.spawn(cargoPath, args, { cwd, env: newEnv });
 
@@ -148,38 +152,6 @@ class CargoTask {
                 this.interrupted = true;
             }
         });
-    }
-}
-
-class CargoTaskArgs {
-    private args: string[];
-
-    public constructor(command: string) {
-        this.args = [command];
-    }
-
-    public setMessageFormatToJson(): void {
-        this.args.push('--message-format', 'json');
-    }
-
-    public setBuildTypeToReleaseIfRequired(buildType: BuildType): void {
-        if (buildType !== BuildType.Release) {
-            return;
-        }
-
-        this.args.push('--release');
-    }
-
-    public addArg(arg: string): void {
-        this.args.push(arg);
-    }
-
-    public addArgs(args: string[]): void {
-        this.args.push(...args);
-    }
-
-    public getArgs(): string[] {
-        return this.args;
     }
 }
 
@@ -304,7 +276,7 @@ class CargoTaskManager {
     }
 
     public invokeCargoInit(crateType: CrateType, name: string, cwd: string): Thenable<void> {
-        const args = ['init', '--name', name];
+        const args = [, '--name', name];
 
         switch (crateType) {
             case CrateType.Application:
@@ -341,43 +313,33 @@ class CargoTaskManager {
 
         const onStderrLine = onLine;
 
-        return this.currentTask.execute(args, cwd, onStart, onStdoutLine, onStderrLine).then(() => {
+        return this.currentTask.execute('init', args, cwd, onStart, onStdoutLine, onStderrLine)
+            .then(() => {
             this.currentTask = null;
         });
     }
 
-    public invokeCargoBuildWithArgs(additionalArgs: string[]): void {
-        const argsBuilder = new CargoTaskArgs('build');
-        argsBuilder.setMessageFormatToJson();
-        argsBuilder.addArgs(additionalArgs);
-
-        const args = argsBuilder.getArgs();
-
-        this.runCargo(args, true);
+    public invokeCargoBuildWithArgs(args: string[]): void {
+        this.runCargo('build', args, true);
     }
 
     public invokeCargoBuildUsingBuildArgs(): void {
         this.invokeCargoBuildWithArgs(UserDefinedArgs.getBuildArgs());
     }
 
-    public invokeCargoCheckWithArgs(additionalArgs: string[]): void {
+    public invokeCargoCheckWithArgs(args: string[]): void {
         this.checkCargoCheckAvailability().then(isAvailable => {
-            let argsBuilder: CargoTaskArgs;
+            let command;
 
             if (isAvailable) {
-                argsBuilder = new CargoTaskArgs('check');
-                argsBuilder.setMessageFormatToJson();
-                argsBuilder.addArgs(additionalArgs);
+                command = 'check';
             } else {
-                argsBuilder = new CargoTaskArgs('rustc');
-                argsBuilder.setMessageFormatToJson();
-                argsBuilder.addArgs(additionalArgs);
-                argsBuilder.addArgs(['--', '-Zno-trans']);
+                command = 'rustc';
+
+                args.push('--', '-Zno-trans');
             }
 
-            const args = argsBuilder.getArgs();
-
-            this.runCargo(args, true);
+            this.runCargo(command, args, true);
         });
     }
 
@@ -385,14 +347,8 @@ class CargoTaskManager {
         this.invokeCargoCheckWithArgs(UserDefinedArgs.getCheckArgs());
     }
 
-    public invokeCargoClippyWithArgs(additionalArgs: string[]): void {
-        const argsBuilder = new CargoTaskArgs('clippy');
-        argsBuilder.setMessageFormatToJson();
-        argsBuilder.addArgs(additionalArgs);
-
-        const args = argsBuilder.getArgs();
-
-        this.runCargo(args, true);
+    public invokeCargoClippyWithArgs(args: string[]): void {
+        this.runCargo('clippy', args, true);
     }
 
     public invokeCargoClippyUsingClippyArgs(): void {
@@ -404,7 +360,7 @@ class CargoTaskManager {
 
         this.channel.clear();
 
-        const args = ['new', projectName, isBin ? '--bin' : '--lib'];
+        const args = [projectName, isBin ? '--bin' : '--lib'];
 
         {
             const configuration = getConfiguration();
@@ -424,41 +380,31 @@ class CargoTaskManager {
 
         const onStderrLine = onLine;
 
-        this.currentTask.execute(args, cwd, onStart, onStdoutLine, onStderrLine).then(() => {
+        this.currentTask
+            .execute('new', args, cwd, onStart, onStdoutLine, onStderrLine)
+            .then(() => {
             this.currentTask = null;
         });
     }
 
-    public invokeCargoRunWithArgs(additionalArgs: string[]): void {
-        const argsBuilder = new CargoTaskArgs('run');
-        argsBuilder.setMessageFormatToJson();
-        argsBuilder.addArgs(additionalArgs);
-
-        const args = argsBuilder.getArgs();
-
-        this.runCargo(args, true);
+    public invokeCargoRunWithArgs(args: string[]): void {
+        this.runCargo('run', args, true);
     }
 
     public invokeCargoRunUsingRunArgs(): void {
         this.invokeCargoRunWithArgs(UserDefinedArgs.getRunArgs());
     }
 
-    public invokeCargoTestWithArgs(additionalArgs: string[]): void {
-        const argsBuilder = new CargoTaskArgs('test');
-        argsBuilder.setMessageFormatToJson();
-        argsBuilder.addArgs(additionalArgs);
-
-        const args = argsBuilder.getArgs();
-
-        this.runCargo(args, true);
+    public invokeCargoTestWithArgs(args: string[]): void {
+        this.runCargo('test', args, true);
     }
 
     public invokeCargoTestUsingTestArgs(): void {
         this.invokeCargoTestWithArgs(UserDefinedArgs.getTestArgs());
     }
 
-    public invokeCargoWithArgs(args: string[]): void {
-        this.runCargo(args, true);
+    public invokeCargo(command: string, args: string[]): void {
+        this.runCargo(command, args, true);
     }
 
     public stopTask(): void {
@@ -468,27 +414,35 @@ class CargoTaskManager {
     }
 
     private checkCargoCheckAvailability(): Thenable<boolean> {
-        const args = ['check', '--help'];
-
-        const cwd = '/'; // Doesn't matter.
-
         const task = new CargoTask(this.configurationManager);
 
-        return task.execute(args, cwd).then((exitCode: ExitCode) => {
+        return task.execute('check', ['--help'], '/').then((exitCode: ExitCode) => {
             return exitCode === 0;
         });
     }
 
-    private runCargo(args: string[], force = false): void {
+    private runCargo(command: string, args: string[], force = false): void {
         this.currentWorkingDirectoryManager.cwd().then((value: string) => {
             if (force && this.currentTask) {
                 this.currentTask.kill().then(() => {
-                    this.runCargo(args, force);
+                    this.runCargo(command, args, force);
                 });
 
                 return;
             } else if (this.currentTask) {
                 return;
+            }
+
+            switch (command) {
+                case 'build':
+                case 'check':
+                case 'clippy':
+                case 'run':
+                case 'test':
+                    args = ['--message-format', 'json'].concat(args);
+                    break;
+                default:
+                    break;
             }
 
             this.diagnosticPublisher.clearDiagnostics();
@@ -513,7 +467,7 @@ class CargoTaskManager {
                 startTime = Date.now();
 
                 this.channel.clear();
-                this.channel.append(`Started cargo ${args.join(' ')}\n`);
+                this.channel.append(`Started cargo ${command} ${args.join(' ')}\n`);
             };
 
             const onStdoutLine = (line: string) => {
@@ -562,7 +516,9 @@ class CargoTaskManager {
                 vscode.window.showInformationMessage('The "cargo" command is not available. Make sure it is installed.');
             };
 
-            this.currentTask.execute(args, cwd, onStart, onStdoutLine, onStderrLine).then(onGracefullyEnded, onUnexpectedlyEnded);
+            this.currentTask
+                .execute(command, args, cwd, onStart, onStdoutLine, onStderrLine)
+                .then(onGracefullyEnded, onUnexpectedlyEnded);
         }).catch((error: Error) => {
             vscode.window.showErrorMessage(error.message);
         });
@@ -770,9 +726,9 @@ export class CargoManager {
         });
     }
 
-    public registerCommandInvokingCargoWithArgs(commandName: string, ...args: string[]): vscode.Disposable {
+    public registerCommandInvokingCargoWithArgs(commandName: string, cargoCommand: string, ...args: string[]): vscode.Disposable {
         return vscode.commands.registerCommand(commandName, () => {
-            this.cargoManager.invokeCargoWithArgs(args);
+            this.cargoManager.invokeCargo(cargoCommand, args);
         });
     }
 
