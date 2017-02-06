@@ -36,7 +36,7 @@ export function activate(ctx: ExtensionContext): void {
 
             let { executable, args, env: customEnv } = rlsConfiguration;
 
-            let env = process.env;
+            let env = Object.assign({}, process.env);
 
             if (customEnv) {
                 env = Object.assign(env, customEnv);
