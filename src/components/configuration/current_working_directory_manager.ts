@@ -13,7 +13,7 @@ export class CurrentWorkingDirectoryManager {
         this.rememberedCwd = null;
     }
 
-    public cwd(): Promise<string> {
+    public async cwd(): Promise<string> {
         // Internal description of the method:
         // Issue: https://github.com/KalitaAlexey/vscode-rust/issues/36
         // The algorithm:
@@ -28,24 +28,21 @@ export class CurrentWorkingDirectoryManager {
         //   * Otherwise:
         //     * Try using workspace as cwd
 
-        return this.getCwdFromActiveTextEditor()
-            .then(newCwd => {
-                this.rememberedCwd = newCwd;
+        try {
+            return await this.getCwdFromActiveTextEditor();
+        } catch (error) {
+            try {
+                return await this.getPreviousCwd();
+            } catch (previousCwdError) {
+                const canBeUsed = await this.checkWorkspaceCanBeUsedAsCwd();
 
-                return newCwd;
-            })
-            .catch((error: Error) => {
-                return this.getPreviousCwd(error);
-            })
-            .catch((error: Error) => {
-                return this.checkWorkspaceCanBeUsedAsCwd().then(canBeUsed => {
-                    if (canBeUsed) {
-                        return Promise.resolve(workspace.rootPath);
-                    } else {
-                        return Promise.reject(error);
-                    }
-                });
-            });
+                if (canBeUsed) {
+                    return workspace.rootPath;
+                } else {
+                    throw error;
+                }
+            }
+        }
     }
 
     private checkWorkspaceCanBeUsedAsCwd(): Promise<boolean> {
@@ -84,9 +81,9 @@ export class CurrentWorkingDirectoryManager {
         });
     }
 
-    private getPreviousCwd(error: Error): Promise<string> {
+    private getPreviousCwd(): Promise<string> {
         if (this.rememberedCwd === undefined) {
-            return Promise.reject(error);
+            return Promise.reject(undefined);
         }
 
         const pathToCargoTomlInPreviousCwd = join(this.rememberedCwd, 'Cargo.toml');
@@ -95,7 +92,7 @@ export class CurrentWorkingDirectoryManager {
             if (exists) {
                 return Promise.resolve(this.rememberedCwd);
             } else {
-                return Promise.reject(error);
+                return Promise.reject(undefined);
             }
         });
     }

@@ -31,7 +31,7 @@ export class CustomConfigurationChooser {
         this.configurationManager = configurationManager;
     }
 
-    public choose(propertyName: string): Thenable<string[]> {
+    public async choose(propertyName: string): Promise<string[]> {
         const configuration = ConfigurationManager.getConfiguration();
 
         const customConfigurations = configuration.get<CustomConfiguration[]>(propertyName);
@@ -52,12 +52,12 @@ export class CustomConfigurationChooser {
 
         const quickPickItems = customConfigurations.map(c => new CustomConfigurationQuickPickItem(c));
 
-        return window.showQuickPick(quickPickItems).then(item => {
-            if (!item) {
-                return Promise.reject(null);
-            }
+        const item = await window.showQuickPick(quickPickItems);
 
-            return Promise.resolve(item.args);
-        });
+        if (!item) {
+            return Promise.reject(null);
+        }
+
+        return Promise.resolve(item.args);
     }
 }

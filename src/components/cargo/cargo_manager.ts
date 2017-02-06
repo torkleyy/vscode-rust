@@ -83,7 +83,7 @@ class CargoTask {
         onStart?: () => void,
         onStdoutLine?: (data: string) => void,
         onStderrLine?: (data: string) => void
-    ): Thenable<ExitCode> {
+    ): Promise<ExitCode> {
         return new Promise<ExitCode>((resolve, reject) => {
             const cargoPath = this.configurationManager.getCargoPath();
 
@@ -275,7 +275,7 @@ class CargoTaskManager {
         this.diagnosticPublishingEnabled = diagnosticPublishingEnabled;
     }
 
-    public invokeCargoInit(crateType: CrateType, name: string, cwd: string): Thenable<void> {
+    public async invokeCargoInit(crateType: CrateType, name: string, cwd: string): Promise<void> {
         const args = [, '--name', name];
 
         switch (crateType) {
@@ -313,10 +313,9 @@ class CargoTaskManager {
 
         const onStderrLine = onLine;
 
-        return this.currentTask.execute('init', args, cwd, onStart, onStdoutLine, onStderrLine)
-            .then(() => {
-            this.currentTask = null;
-        });
+        await this.currentTask.execute('init', args, cwd, onStart, onStdoutLine, onStderrLine);
+
+        this.currentTask = null;
     }
 
     public invokeCargoBuildWithArgs(args: string[]): void {
@@ -327,20 +326,20 @@ class CargoTaskManager {
         this.invokeCargoBuildWithArgs(UserDefinedArgs.getBuildArgs());
     }
 
-    public invokeCargoCheckWithArgs(args: string[]): void {
-        this.checkCargoCheckAvailability().then(isAvailable => {
-            let command;
+    public async invokeCargoCheckWithArgs(args: string[]): Promise<void> {
+        const isAvailable = await this.checkCargoCheckAvailability();
 
-            if (isAvailable) {
-                command = 'check';
-            } else {
-                command = 'rustc';
+        let command;
 
-                args.push('--', '-Zno-trans');
-            }
+        if (isAvailable) {
+            command = 'check';
+        } else {
+            command = 'rustc';
 
-            this.runCargo(command, args, true);
-        });
+            args.push('--', '-Zno-trans');
+        }
+
+        this.runCargo(command, args, true);
     }
 
     public invokeCargoCheckUsingCheckArgs(): void {
@@ -355,7 +354,7 @@ class CargoTaskManager {
         this.invokeCargoClippyWithArgs(UserDefinedArgs.getClippyArgs());
     }
 
-    public invokeCargoNew(projectName: string, isBin: boolean, cwd: string): void {
+    public async invokeCargoNew(projectName: string, isBin: boolean, cwd: string): Promise<void> {
         this.currentTask = new CargoTask(this.configurationManager);
 
         this.channel.clear();
@@ -380,11 +379,9 @@ class CargoTaskManager {
 
         const onStderrLine = onLine;
 
-        this.currentTask
-            .execute('new', args, cwd, onStart, onStdoutLine, onStderrLine)
-            .then(() => {
-            this.currentTask = null;
-        });
+        await this.currentTask.execute('new', args, cwd, onStart, onStdoutLine, onStderrLine);
+
+        this.currentTask = null;
     }
 
     public invokeCargoRunWithArgs(args: string[]): void {
@@ -413,115 +410,118 @@ class CargoTaskManager {
         }
     }
 
-    private checkCargoCheckAvailability(): Thenable<boolean> {
+    private async checkCargoCheckAvailability(): Promise<boolean> {
         const task = new CargoTask(this.configurationManager);
 
-        return task.execute('check', ['--help'], '/').then((exitCode: ExitCode) => {
-            return exitCode === 0;
-        });
+        const exitCode = await task.execute('check', ['--help'], '/');
+
+        return exitCode === 0;
     }
 
-    private runCargo(command: string, args: string[], force = false): void {
-        this.currentWorkingDirectoryManager.cwd().then((value: string) => {
-            if (force && this.currentTask) {
-                this.currentTask.kill().then(() => {
-                    this.runCargo(command, args, force);
-                });
+    private async runCargo(command: string, args: string[], force = false): Promise<void> {
+        let cwd;
 
-                return;
-            } else if (this.currentTask) {
-                return;
-            }
-
-            switch (command) {
-                case 'build':
-                case 'check':
-                case 'clippy':
-                case 'run':
-                case 'test':
-                    args = ['--message-format', 'json'].concat(args);
-                    break;
-                default:
-                    break;
-            }
-
-            this.diagnosticPublisher.clearDiagnostics();
-
-            this.currentTask = new CargoTask(this.configurationManager);
-
-            {
-                const configuration = getConfiguration();
-
-                if (configuration['showOutput']) {
-                    this.channel.show();
-                }
-            }
-
-            this.cargoTaskStatusBarManager.show();
-
-            const cwd = value;
-
-            let startTime: number;
-
-            const onStart = () => {
-                startTime = Date.now();
-
-                this.channel.clear();
-                this.channel.append(`Started cargo ${command} ${args.join(' ')}\n`);
-            };
-
-            const onStdoutLine = (line: string) => {
-                if (line.startsWith('{')) {
-                    const fileDiagnostics = this.diagnosticParser.parseLine(line);
-
-                    for (const fileDiagnostic of fileDiagnostics) {
-                        if (this.diagnosticPublishingEnabled) {
-                            this.diagnosticPublisher.publishDiagnostic(fileDiagnostic, cwd);
-                        }
-                    }
-                } else {
-                    this.channel.append(`${line}\n`);
-                }
-            };
-
-            const onStderrLine = (line: string) => {
-                this.channel.append(`${line}\n`);
-            };
-
-            const onGracefullyEnded = (exitCode: ExitCode) => {
-                this.cargoTaskStatusBarManager.hide();
-
-                this.currentTask = null;
-
-                const endTime = Date.now();
-
-                this.channel.append(`Completed with code ${exitCode}\n`);
-                this.channel.append(`It took approximately ${(endTime - startTime) / 1000} seconds\n`);
-            };
-
-            const onUnexpectedlyEnded = (error?: Error) => {
-                this.cargoTaskStatusBarManager.hide();
-
-                this.currentTask = null;
-
-                // No error means the task has been interrupted
-                if (!error) {
-                    return;
-                }
-
-                if (error.message !== 'ENOENT') {
-                    return;
-                }
-
-                vscode.window.showInformationMessage('The "cargo" command is not available. Make sure it is installed.');
-            };
-
-            this.currentTask
-                .execute(command, args, cwd, onStart, onStdoutLine, onStderrLine)
-                .then(onGracefullyEnded, onUnexpectedlyEnded);
-        }).catch((error: Error) => {
+        try {
+            cwd = await this.currentWorkingDirectoryManager.cwd();
+        } catch (error) {
             vscode.window.showErrorMessage(error.message);
-        });
+
+            return;
+        }
+
+        if (force && this.currentTask) {
+            await this.currentTask.kill();
+
+            this.runCargo(command, args, force);
+
+            return;
+        } else if (this.currentTask) {
+            return;
+        }
+
+        switch (command) {
+            case 'build':
+            case 'check':
+            case 'clippy':
+            case 'run':
+            case 'test':
+                args = ['--message-format', 'json'].concat(args);
+                break;
+            default:
+                break;
+        }
+
+        this.diagnosticPublisher.clearDiagnostics();
+
+        this.currentTask = new CargoTask(this.configurationManager);
+
+        {
+            const configuration = getConfiguration();
+
+            if (configuration['showOutput']) {
+                this.channel.show();
+            }
+        }
+
+        this.cargoTaskStatusBarManager.show();
+
+        let startTime: number;
+
+        const onStart = () => {
+            startTime = Date.now();
+
+            this.channel.clear();
+            this.channel.append(`Started cargo ${command} ${args.join(' ')}\n`);
+        };
+
+        const onStdoutLine = (line: string) => {
+            if (line.startsWith('{')) {
+                const fileDiagnostics = this.diagnosticParser.parseLine(line);
+
+                for (const fileDiagnostic of fileDiagnostics) {
+                    if (this.diagnosticPublishingEnabled) {
+                        this.diagnosticPublisher.publishDiagnostic(fileDiagnostic, cwd);
+                    }
+                }
+            } else {
+                this.channel.append(`${line}\n`);
+            }
+        };
+
+        const onStderrLine = (line: string) => {
+            this.channel.append(`${line}\n`);
+        };
+
+        let exitCode;
+
+        try {
+            exitCode = await this.currentTask
+                .execute(command, args, cwd, onStart, onStdoutLine, onStderrLine);
+        } catch (error) {
+            this.cargoTaskStatusBarManager.hide();
+
+            this.currentTask = null;
+
+            // No error means the task has been interrupted
+            if (!error) {
+                return;
+            }
+
+            if (error.message !== 'ENOENT') {
+                return;
+            }
+
+            vscode.window.showInformationMessage('The "cargo" command is not available. Make sure it is installed.');
+        }
+
+        this.cargoTaskStatusBarManager.hide();
+
+        this.currentTask = null;
+
+        const endTime = Date.now();
+
+        this.channel.append(`Completed with code ${exitCode}\n`);
+        this.channel.append(`It took approximately ${(endTime - startTime) / 1000} seconds\n`);
     }
 }
 
