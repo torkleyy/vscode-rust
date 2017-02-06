@@ -1,14 +1,8 @@
 import * as vscode from 'vscode';
-import * as cp from 'child_process';
-import * as readline from 'readline';
-import * as tmp from 'tmp';
-import kill = require('tree-kill');
 
-import { ChildProcess } from 'child_process';
+import * as tmp from 'tmp';
 
 import { ExtensionContext } from 'vscode';
-
-import elegantSpinner = require('elegant-spinner');
 
 import { ConfigurationManager } from '../configuration/configuration_manager';
 
@@ -22,7 +16,7 @@ import { DiagnosticParser } from './diagnostic_parser';
 
 import { DiagnosticPublisher } from './diagnostic_publisher';
 
-const spinner = elegantSpinner();
+import { OutputChannelCargoTask } from './output_channel_cargo_task';
 
 export enum BuildType {
     Debug,
@@ -34,125 +28,9 @@ enum CrateType {
     Library
 }
 
-class ChannelWrapper {
-    private channel: vscode.OutputChannel;
-
-    constructor(channel: vscode.OutputChannel) {
-        this.channel = channel;
-    }
-
-    public append(message: string): void {
-        this.channel.append(message);
-    }
-
-    public clear(): void {
-        this.channel.clear();
-    }
-
-    public show(): void {
-        this.channel.show(true);
-    }
-}
-
 export enum CheckTarget {
     Library,
     Application
-}
-
-type ExitCode = number;
-
-class CargoTask {
-    private configurationManager: ConfigurationManager;
-
-    private process: ChildProcess | null;
-
-    private interrupted: boolean;
-
-    public constructor(configurationManager: ConfigurationManager) {
-        this.configurationManager = configurationManager;
-
-        this.process = null;
-
-        this.interrupted = false;
-    }
-
-    public execute(
-        command: string,
-        args: string[],
-        cwd: string,
-        onStart?: () => void,
-        onStdoutLine?: (data: string) => void,
-        onStderrLine?: (data: string) => void
-    ): Promise<ExitCode> {
-        return new Promise<ExitCode>((resolve, reject) => {
-            const cargoPath = this.configurationManager.getCargoPath();
-
-            if (onStart) {
-                onStart();
-            }
-
-            let newEnv = Object.assign({}, process.env);
-
-            const configuration = getConfiguration();
-            const customEnv = configuration['cargoEnv'];
-
-            if (customEnv) {
-                newEnv = Object.assign(newEnv, customEnv);
-            }
-
-            // Prepend a command before arguments
-            args = [command].concat(args);
-
-            this.process = cp.spawn(cargoPath, args, { cwd, env: newEnv });
-
-            const stdout = readline.createInterface({ input: this.process.stdout });
-
-            stdout.on('line', line => {
-                if (!onStdoutLine) {
-                    return;
-                }
-
-                onStdoutLine(line);
-            });
-
-            const stderr = readline.createInterface({ input: this.process.stderr });
-
-            stderr.on('line', line => {
-                if (!onStderrLine) {
-                    return;
-                }
-
-                onStderrLine(line);
-            });
-
-            this.process.on('error', error => {
-                reject(error);
-            });
-
-            this.process.on('exit', code => {
-                this.process.removeAllListeners();
-                this.process = null;
-
-                if (this.interrupted) {
-                    reject();
-
-                    return;
-                }
-
-                resolve(code);
-            });
-        });
-    }
-
-    public kill(): Thenable<any> {
-        return new Promise(resolve => {
-            if (!this.interrupted && this.process) {
-                kill(this.process.pid, 'SIGTERM', resolve);
-
-                this.interrupted = true;
-            }
-        });
-    }
 }
 
 class UserDefinedArgs {
@@ -194,85 +72,25 @@ class UserDefinedArgs {
     }
 }
 
-class CargoTaskStatusBarManager {
-    private stopStatusBarItem: vscode.StatusBarItem;
 
-    private spinnerStatusBarItem: vscode.StatusBarItem;
-
-    private interval: NodeJS.Timer | null;
-
-    public constructor(stopCommandName: string) {
-        this.stopStatusBarItem = vscode.window.createStatusBarItem();
-        this.stopStatusBarItem.command = stopCommandName;
-        this.stopStatusBarItem.text = 'Stop';
-        this.stopStatusBarItem.tooltip = 'Click to stop running cargo task';
-
-        this.spinnerStatusBarItem = vscode.window.createStatusBarItem();
-        this.spinnerStatusBarItem.tooltip = 'Cargo task is running';
-
-        this.interval = null;
-    }
-
-    public show(): void {
-        this.stopStatusBarItem.show();
-
-        this.spinnerStatusBarItem.show();
-
-        const update = () => {
-            this.spinnerStatusBarItem.text = spinner();
-        };
-
-        this.interval = setInterval(update, 100);
-    }
-
-    public hide(): void {
-        clearInterval(this.interval);
-
-        this.interval = null;
-
-        this.stopStatusBarItem.hide();
-
-        this.spinnerStatusBarItem.hide();
-    }
-}
 
 class CargoTaskManager {
     private configurationManager: ConfigurationManager;
 
     private currentWorkingDirectoryManager: CurrentWorkingDirectoryManager;
 
-    private diagnosticParser: DiagnosticParser;
-
-    private diagnosticPublisher: DiagnosticPublisher;
-
-    private channel: ChannelWrapper = new ChannelWrapper(vscode.window.createOutputChannel('Cargo'));
-
-    private currentTask: CargoTask;
-
-    private cargoTaskStatusBarManager: CargoTaskStatusBarManager;
-
-    private diagnosticPublishingEnabled: boolean;
+    private outputChannelCargoTask: OutputChannelCargoTask;
 
     public constructor(
+        context: ExtensionContext,
         configurationManager: ConfigurationManager,
-        currentWorkingDirectoryManager: CurrentWorkingDirectoryManager,
-        stopCommandName: string
+        currentWorkingDirectoryManager: CurrentWorkingDirectoryManager
     ) {
         this.configurationManager = configurationManager;
 
         this.currentWorkingDirectoryManager = currentWorkingDirectoryManager;
 
-        this.diagnosticParser = new DiagnosticParser();
-
-        this.diagnosticPublisher = new DiagnosticPublisher();
-
-        this.cargoTaskStatusBarManager = new CargoTaskStatusBarManager(stopCommandName);
-
-        this.diagnosticPublishingEnabled = true;
-    }
-
-    public setDiagnosticPublishingEnabled(diagnosticPublishingEnabled: boolean): void {
-        this.diagnosticPublishingEnabled = diagnosticPublishingEnabled;
+        this.outputChannelCargoTask = new OutputChannelCargoTask(context, configurationManager);
     }
 
     public async invokeCargoInit(crateType: CrateType, name: string, cwd: string): Promise<void> {
@@ -290,6 +108,8 @@ class CargoTaskManager {
             default:
                 throw new Error(`Unhandled crate type=${crateType}`);
         }
+
+        await this.runCargo('init', args, false);
 
         this.currentTask = new CargoTask(this.configurationManager);
 
