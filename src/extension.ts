@@ -34,10 +34,12 @@ export function activate(ctx: ExtensionContext): void {
         if (rlsConfiguration) {
             cargoManager.setDiagnosticParsingEnabled(false);
 
-            let { executable, args, env } = rlsConfiguration;
+            let { executable, args, env: customEnv } = rlsConfiguration;
 
-            if (!env) {
-                env = {};
+            let env = process.env;
+
+            if (customEnv) {
+                env = Object.assign(env, customEnv);
             }
 
             if (!env.RUST_SRC_PATH) {

@@ -31,12 +31,8 @@ export class Manager {
         const serverOptions: ServerOptions = {
             command: executable,
             args: args,
-            options: { env: process.env }
+            options: { env: env }
         };
-
-        if (env) {
-            serverOptions.options.env = Object.assign(serverOptions.options.env, env);
-        }
 
         const clientOptions: LanguageClientOptions = {
             documentSelector: ['rust'],
