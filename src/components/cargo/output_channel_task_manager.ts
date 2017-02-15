@@ -23,8 +23,6 @@ export class OutputChannelTaskManager {
 
     private runningTask: Task | undefined;
 
-    private diagnosticParser: DiagnosticParser;
-
     private diagnosticPublisher: DiagnosticPublisher;
 
     private statusBarItem: OutputChannelTaskStatusBarItem;
@@ -39,8 +37,6 @@ export class OutputChannelTaskManager {
         this.configurationManager = configurationManager;
 
         this.logger = logger;
-
-        this.diagnosticParser = new DiagnosticParser();
 
         this.diagnosticPublisher = new DiagnosticPublisher();
 
@@ -73,6 +69,8 @@ export class OutputChannelTaskManager {
 
         extendArgs();
 
+        const diagnosticParser = new DiagnosticParser();
+
         this.runningTask = new Task(
             this.configurationManager,
             this.logger.createChildLogger('Task: '),
@@ -89,7 +87,7 @@ export class OutputChannelTaskManager {
 
         this.runningTask.setLineReceivedInStdout(line => {
             if (parseOutput && line.startsWith('{')) {
-                const fileDiagnostics = this.diagnosticParser.parseLine(line);
+                const fileDiagnostics = diagnosticParser.parseLine(line);
 
                 for (const fileDiagnostic of fileDiagnostics) {
                     this.diagnosticPublisher.publishDiagnostic(fileDiagnostic, cwd);
