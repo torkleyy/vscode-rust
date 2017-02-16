@@ -69,31 +69,74 @@ suite('Diagnostic Parser Tests', () => {
         const diagnostics = diagnosticParser.parseLine(`
 {
     "message": {
-        "children": [],
-        "code": null,
+        "children": [
+            {
+                "children": [],
+                "code": null,
+                "level": "note",
+                "message": "move occurs because `foo` has type `Foo`, which does not implement the `Copy` trait",
+                "rendered": null,
+                "spans": []
+            }
+        ],
+        "code": {
+            "code": "E0382"
+        },
         "level": "error",
-        "message": "cannot assign to immutable anonymous field \`f.1\`",
+        "message": "use of moved value: \`foo\`",
         "rendered": null,
         "spans": [
             {
-                "byte_end": 43,
-                "byte_start": 36,
+                "byte_end": 95,
+                "byte_start": 92,
                 "column_end": 12,
-                "column_start": 5,
+                "column_start": 9,
                 "expansion": null,
                 "file_name": "src/main.rs",
                 "is_primary": true,
-                "label": null,
-                "line_end": 3,
-                "line_start": 3,
+                "label": "value used here after move",
+                "line_end": 8,
+                "line_start": 8,
                 "suggested_replacement": null,
-                "text": [{"highlight_end": 12, "highlight_start": 5, "text": "    f.1 = 5;"}]
+                "text": [
+                    {
+                        "highlight_end": 12,
+                        "highlight_start": 9,
+                        "text": "    bar(foo);"
+                    }
+                ]
+            },
+            {
+                "byte_end": 81,
+                "byte_start": 78,
+                "column_end": 12,
+                "column_start": 9,
+                "expansion": null,
+                "file_name": "src/main.rs",
+                "is_primary": false,
+                "label": "value moved here",
+                "line_end": 7,
+                "line_start": 7,
+                "suggested_replacement": null,
+                "text": [
+                    {
+                        "highlight_end": 12,
+                        "highlight_start": 9,
+                        "text": "    bar(foo);"
+                    }
+                ]
             }
         ]
     },
     "package_id": "b 0.1.0 (path+file:///tmp/b)",
     "reason": "compiler-message",
-    "target": {"kind": ["bin"], "name": "b", "src_path": "/tmp/b/src/main.rs"}
+    "target": {
+        "kind": [
+            "bin"
+        ],
+        "name": "b",
+        "src_path": "/tmp/b/src/main.rs"
+    }
 }
         `);
 
